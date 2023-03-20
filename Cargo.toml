@@ -1,0 +1,26 @@
+[package]
+name = "zero2prod"
+version = "0.1.0"
+edition = "2021"
+authors = ["Sergei Liashko <serjfv@lgmail.com>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# We could use any path here, but we are following the community convention # We could specify a library name using the `name` field. If unspecified,
+# cargo will default to `package.name`, which is what we want.
+path = "src/lib.rs"
+
+[[bin]]
+# We can only have one library in a project, but we can have multiple binaries!
+path = "src/main.rs"
+name = "zero2prod"
+
+
+[dependencies]
+axum="0.6.11"
+tokio = {version = "1.26.0", features=["full"]}
+hyper = {version = "0.14.25", features=["client"]}
+
+[dev-dependencies]
+pretty_assertions = "1"
