@@ -2,7 +2,6 @@ use chrono::Utc;
 use serde::Deserialize;
 use axum::{Form, response::IntoResponse, extract::State};
 use uuid::Uuid;
-use tracing::Instrument;
 
 #[derive(Debug)]
 #[derive(Deserialize)]
