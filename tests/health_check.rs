@@ -186,3 +186,49 @@ async fn post_subscribe_returns_400_when_any_data_is_missing() {
         );
     }
 }
+
+#[tokio::test]
+async fn subscribe_returns_a_400_when_fields_are_present_but_empty() {
+    let test_app = spawn_app().await;
+    let client = hyper::Client::new();
+
+    let test_cases = vec![
+        ("name=&email=ursula_le_guin%40gmail.com", "empty name"),
+        ("name=Ursula&email=", "empty email"),
+        ("name=Ursula&email=definitely-not-an-email", "invalid email"),
+    ];
+
+    for (invalid_body, description) in test_cases {
+        let response = client
+            .request(
+                hyper::Request::builder()
+                    .method(hyper::Method::POST)
+                    .uri(format!("http://{}/subscriptions", &test_app.address))
+                    .header(
+                        hyper::header::CONTENT_TYPE,
+                        "application/x-www-form-urlencoded",
+                    )
+                    .body(hyper::body::Body::from(invalid_body))
+                    .expect("Hyper request builder should build request"),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(hyper::StatusCode::BAD_REQUEST, response.status(),
+            "The API did not return 400 Ok when the payload was {}.",
+            invalid_body
+        );
+
+        //let body = hyper::body::to_bytes(response.into_body())
+        //    .await
+        //    .expect("hyper can consume response body to bytes");
+        //let body = String::from_utf8(body.into_iter().collect())
+        //    .expect("String can consume response body in bytes to create a String");
+
+        //assert_eq!(
+        //    description, body,
+        //    "The API did not return 200 Ok when the payload was {}.",
+        //    description
+        //);
+    }
+}
