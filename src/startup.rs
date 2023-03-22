@@ -1,24 +1,22 @@
 use axum::{
+    body::{Body, BoxBody},
+    http::{HeaderName, Request, Response},
     routing::{get, post},
-    Router, 
-    http::{HeaderName, Request, Response },
-    body::{BoxBody, Body},
+    Router,
 };
 use std::time::Duration;
 use tracing::Span;
 
-use tower_http::request_id::{ SetRequestIdLayer, PropagateRequestIdLayer, MakeRequestUuid};
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
-
 
 use crate::routes;
 
 #[allow(dead_code)]
 pub async fn app(connection_pool: sqlx::PgPool) -> Router {
-
     let x_request_id = HeaderName::from_static("x-request-id");
-    
+
     Router::new()
         .route("/health_check", get(routes::healt_check))
         .route("/subscriptions", post(routes::subscribe))
@@ -39,19 +37,24 @@ pub async fn app(connection_pool: sqlx::PgPool) -> Router {
                                 request_id = format!("{}", uuid::Uuid::new_v4()),
                             )
                         })
-                        .on_response(|response: &Response<BoxBody>, _latency: Duration, span: &Span| {
-                            span.record("status_code", &tracing::field::display(response.status()));
-                            tracing::info!("response generated")
-                        })
-                        //.make_span_with(
-                        //    DefaultMakeSpan::new()
-                        //        .include_headers(true)
-                        //        .level(tracing::Level::INFO),
-                        //)
-                        //.on_response(DefaultOnResponse::new().include_headers(true))
+                        .on_response(
+                            |response: &Response<BoxBody>, _latency: Duration, span: &Span| {
+                                span.record(
+                                    "status_code",
+                                    &tracing::field::display(response.status()),
+                                );
+                                tracing::info!("response generated")
+                            },
+                        ), //.make_span_with(
+                           //    DefaultMakeSpan::new()
+                           //        .include_headers(true)
+                           //        .level(tracing::Level::INFO),
+                           //)
+                           //.on_response(DefaultOnResponse::new().include_headers(true))
                 )
                 //.set_x_request_id(MakeRequestUuid)
-                .layer(PropagateRequestIdLayer::new(x_request_id)))
-                //.propagate_x_request_id())
+                .layer(PropagateRequestIdLayer::new(x_request_id)),
+        )
+        //.propagate_x_request_id())
         .with_state(connection_pool)
 }

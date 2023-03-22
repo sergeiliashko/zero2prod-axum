@@ -1,10 +1,9 @@
+use axum::{extract::State, response::IntoResponse, Form};
 use chrono::Utc;
 use serde::Deserialize;
-use axum::{Form, response::IntoResponse, extract::State};
 use uuid::Uuid;
 
-#[derive(Debug)]
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct FormData {
     email: String,
     name: String,
@@ -13,7 +12,7 @@ pub struct FormData {
 #[tracing::instrument(
     name = "Adding a new subscriber",
     skip(form, pool),
-    fields( subscriber_email = %form.email, subscriber_name = %form.name) 
+    fields( subscriber_email = %form.email, subscriber_name = %form.name)
 )]
 pub async fn subscribe(
     State(pool): State<sqlx::postgres::PgPool>,
@@ -21,7 +20,7 @@ pub async fn subscribe(
 ) -> impl IntoResponse {
     match insert_subscriber(&pool, &form).await {
         Ok(_) => axum::http::StatusCode::OK,
-        Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
@@ -31,20 +30,23 @@ pub async fn subscribe(
 )]
 pub async fn insert_subscriber(
     pool: &sqlx::postgres::PgPool,
-    form: &FormData) -> Result<(),sqlx::Error> {
-
-    sqlx::query!(r#" INSERT INTO subscriptions (id, email, name, subscribed_at) VALUES ($1, $2, $3, $4) "#,
+    form: &FormData,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#" INSERT INTO subscriptions (id, email, name, subscribed_at) VALUES ($1, $2, $3, $4) "#,
         Uuid::new_v4(),
-        form.email, 
+        form.email,
         form.name,
-        Utc::now())
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to execute query: {:?}", e);
-            e})?;
+        Utc::now()
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to execute query: {:?}", e);
+        e
+    })?;
     // Using the `?` operator to return early
-    // if the function failed, returning a sqlx::Error 
+    // if the function failed, returning a sqlx::Error
     // We will talk about error handling in depth later!
     Ok(())
 }
