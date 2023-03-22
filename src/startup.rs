@@ -9,7 +9,7 @@ use tracing::Span;
 
 use tower_http::request_id::{ SetRequestIdLayer, PropagateRequestIdLayer, MakeRequestUuid};
 use tower_http::cors::{CorsLayer, Any};
-use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tower_http::trace::TraceLayer;
 
 
 use crate::routes;
@@ -32,10 +32,11 @@ pub async fn app(connection_pool: sqlx::PgPool) -> Router {
                 ))
                 .layer(
                     TraceLayer::new_for_http()
-                        .make_span_with(|request: &Request<Body>| {
+                        .make_span_with(|_request: &Request<Body>| {
                             tracing::info_span!(
                                 "http-request",
                                 status_code = tracing::field::Empty,
+                                request_id = format!("{}", uuid::Uuid::new_v4()),
                             )
                         })
                         .on_response(|response: &Response<BoxBody>, _latency: Duration, span: &Span| {
@@ -53,5 +54,4 @@ pub async fn app(connection_pool: sqlx::PgPool) -> Router {
                 .layer(PropagateRequestIdLayer::new(x_request_id)))
                 //.propagate_x_request_id())
         .with_state(connection_pool)
-
 }

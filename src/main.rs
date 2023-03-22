@@ -1,7 +1,8 @@
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::time::Duration;
 use secrecy::ExposeSecret;
-use sqlx::postgres::{PgPool, PgPoolOptions};
+use sqlx::postgres::PgPoolOptions;
 
 use zero2prod::startup;
 use zero2prod::configuration::get_configuration;
@@ -16,15 +17,23 @@ async fn main() -> Result<(), std::io::Error>{
 
     let pool = PgPoolOptions::new()
         .max_connections(10)
-        //.connect_timeout(Duration::from_secs(3))
-        .connect(&configuration.database.connection_string().expose_secret())
-        .await
-        .expect("can't connect to database");
+        .acquire_timeout(Duration::from_secs(3))
+        .connect_lazy_with(configuration.database.without_db());
+        //.expect("can't connect to database");
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], configuration.application_port));
+    let ipadr =std::net::IpAddr::from_str(&configuration.application.host)
+        .expect("Failed to parse app host from config");
+    //let addr = SocketAddr::from((ipadr, configuration.application.port));
 
+    let port:u16  = match std::env::var("PORT") {
+            Ok(port) => port.parse().expect("expect to get existing yandex port"),
+            Err(_) => configuration.application.port,
+    };
+    //let addr = SocketAddr::new(ipadr, configuration.application.port);
+    let addr = SocketAddr::new(ipadr, port);
 
-    println!("listening on {}", addr);
+    println!("Try to bind to - {}",&addr);
+
     axum::Server::bind(&addr)
         .serve(startup::app(pool).await.into_make_service())
         .await

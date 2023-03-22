@@ -22,6 +22,7 @@ axum="0.6.11"
 tokio = {version = "1.26.0", features=["full"]}
 hyper = {version = "0.14.25", features=["client"]}
 serde = {version = "1.0.158", features=["derive"]}
+serde-aux = "4"
 config = "0.13.3"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4.22", default-features = false, features = ["clock"] }
@@ -41,11 +42,13 @@ tower = { version = "0.4" }
 version = "0.6"
 default-features = false 
 features = [
-"runtime-tokio-rustls", "macros",
-"postgres",
-"uuid",
-"chrono",
-"migrate"
+    "runtime-tokio-rustls",
+    "macros",
+    "postgres",
+    "uuid",
+    "chrono",
+    "migrate",
+    "offline"
 ]
 
 
