@@ -37,7 +37,7 @@ tower-http = { version = "0.4", features = ["util", "trace", "cors", "request-id
 tower = { version = "0.4" }
 validator = { version = "0.15", features = ["derive"] }
 unicode-segmentation = "1.10.1"
-
+rand = "0.8.5"
 
 
 [dependencies.sqlx] 
@@ -57,3 +57,6 @@ features = [
 [dev-dependencies]
 pretty_assertions = "1"
 claims = "0.7"
+fake = "2.5.0"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
