@@ -1,7 +1,6 @@
 use hyper;
 use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
-use secrecy::ExposeSecret;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
 
