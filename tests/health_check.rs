@@ -2,6 +2,7 @@ use hyper;
 use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
+use zero2prod::email_client::EmailClient;
 use std::net::TcpListener;
 
 use zero2prod::configuration::{get_configuration, DatabaseSettings};
@@ -66,7 +67,14 @@ async fn spawn_app() -> TestApp {
     configuration.database.database_name = uuid::Uuid::new_v4().to_string();
     let connection_pool = configure_database(&configuration.database).await;
 
-    let app_instance = app(connection_pool.clone()).await;
+    let sender_email = configuration.email_client.sender()
+        .expect("Invalid sender email address");
+    let email_client = EmailClient::new(
+        configuration.email_client.base_url,
+        sender_email,
+        configuration.email_client.authorization_token,
+        );
+    let app_instance = app(connection_pool.clone(), email_client).await;
 
     tokio::spawn(async move {
         hyper::Server::from_tcp(listener)
@@ -198,7 +206,7 @@ async fn subscribe_returns_a_400_when_fields_are_present_but_empty() {
         ("name=Ursula&email=definitely-not-an-email", "invalid email"),
     ];
 
-    for (invalid_body, description) in test_cases {
+    for (invalid_body, _description) in test_cases {
         let response = client
             .request(
                 hyper::Request::builder()

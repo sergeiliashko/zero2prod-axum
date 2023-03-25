@@ -11,11 +11,32 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
-use crate::routes;
+use crate::{routes, email_client::EmailClient};
+
+// In axum, we have only one state type
+#[derive(Clone)]
+struct AppState {
+    email_client: EmailClient,
+    connection_pool: sqlx::PgPool,
+}
+impl axum::extract::FromRef<AppState> for EmailClient {
+    fn from_ref(app_state: &AppState) -> EmailClient {
+        app_state.email_client.clone()
+    }
+}
+impl axum::extract::FromRef<AppState> for sqlx::PgPool {
+    fn from_ref(app_state: &AppState) -> sqlx::PgPool {
+        app_state.connection_pool.clone()
+    }
+}
 
 #[allow(dead_code)]
-pub async fn app(connection_pool: sqlx::PgPool) -> Router {
+pub async fn app(connection_pool: sqlx::PgPool, email_client: EmailClient) -> Router {
     let x_request_id = HeaderName::from_static("x-request-id");
+    let state = AppState {
+        email_client,
+        connection_pool
+    };
 
     Router::new()
         .route("/health_check", get(routes::healt_check))
@@ -56,5 +77,7 @@ pub async fn app(connection_pool: sqlx::PgPool) -> Router {
                 .layer(PropagateRequestIdLayer::new(x_request_id)),
         )
         //.propagate_x_request_id())
-        .with_state(connection_pool)
+        //.with_state(connection_pool)
+        .with_state(state)
+        //.with_state(email_client)
 }
