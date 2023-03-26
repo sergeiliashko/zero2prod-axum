@@ -3,6 +3,7 @@ use crate::helpers::spawn_app;
 #[tokio::test]
 async fn get_health_check_returns_200() {
     let test_app = spawn_app().await;
+    dbg!(&test_app.address);
 
     let client = hyper::Client::new();
 

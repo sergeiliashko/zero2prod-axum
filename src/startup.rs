@@ -11,7 +11,11 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
-use crate::{email_client::EmailClient, routes};
+use crate::{
+    configuration::{DatabaseSettings, Settings},
+    email_client::EmailClient,
+    routes,
+};
 
 // In axum, we have only one state type
 #[derive(Clone)]
@@ -30,7 +34,63 @@ impl axum::extract::FromRef<AppState> for sqlx::PgPool {
     }
 }
 
-#[allow(dead_code)]
+pub struct Application {
+    tcp_listener: std::net::TcpListener,
+    app: Router,
+}
+
+impl Application {
+    pub async fn build(configuration: Settings) -> Result<Self, std::io::Error> {
+        let connection_pool = get_connection_pool(&configuration.database);
+
+        let sender_email = configuration
+            .email_client
+            .sender()
+            .expect("Invalid sender email address.");
+
+        let timeout = configuration.email_client.timeout();
+
+        let email_client = EmailClient::new(
+            configuration.email_client.base_url,
+            sender_email,
+            configuration.email_client.authorization_token,
+            timeout,
+        );
+        let app = app(connection_pool, email_client).await;
+
+        let address = format!(
+            "{}:{}",
+            configuration.application.host, configuration.application.port
+        );
+        let tcp_listener = std::net::TcpListener::bind(address)?;
+
+        Ok(Self { tcp_listener, app })
+    }
+
+    pub fn port(&self) -> u16 {
+        self.tcp_listener.local_addr().unwrap().port()
+    }
+
+    pub fn address(&self) -> String {
+        format!("{}", self.tcp_listener.local_addr().unwrap())
+    }
+
+    // A more expressive name that makes it clear that
+    // this function only returns when the application is stopped.
+    pub async fn run_until_stopped(self) -> Result<(), hyper::Error> {
+        axum::Server::from_tcp(self.tcp_listener)?
+            .serve(self.app.into_make_service())
+            .await
+    }
+}
+
+pub fn get_connection_pool(configuration: &DatabaseSettings) -> sqlx::postgres::PgPool {
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(10)
+        .acquire_timeout(Duration::from_secs(2))
+        .connect_lazy_with(configuration.with_db())
+}
+
 pub async fn app(connection_pool: sqlx::PgPool, email_client: EmailClient) -> Router {
     let x_request_id = HeaderName::from_static("x-request-id");
     let state = AppState {

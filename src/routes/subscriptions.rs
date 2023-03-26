@@ -48,6 +48,7 @@ pub async fn insert_subscriber(
     pool: &sqlx::postgres::PgPool,
     new_subscriber: &NewSubscriber,
 ) -> Result<(), sqlx::Error> {
+    dbg!(&pool.connect_options());
     sqlx::query!(
         r#" INSERT INTO subscriptions (id, email, name, subscribed_at) VALUES ($1, $2, $3, $4) "#,
         Uuid::new_v4(),
