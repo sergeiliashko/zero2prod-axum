@@ -2,8 +2,8 @@ use hyper;
 use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
-use zero2prod::email_client::EmailClient;
 use std::net::TcpListener;
+use zero2prod::email_client::EmailClient;
 
 use zero2prod::configuration::{get_configuration, DatabaseSettings};
 use zero2prod::startup::app;
@@ -67,13 +67,18 @@ async fn spawn_app() -> TestApp {
     configuration.database.database_name = uuid::Uuid::new_v4().to_string();
     let connection_pool = configure_database(&configuration.database).await;
 
-    let sender_email = configuration.email_client.sender()
+    let sender_email = configuration
+        .email_client
+        .sender()
         .expect("Invalid sender email address");
+    let timeout = configuration.email_client.timeout();
+
     let email_client = EmailClient::new(
         configuration.email_client.base_url,
         sender_email,
         configuration.email_client.authorization_token,
-        );
+        timeout,
+    );
     let app_instance = app(connection_pool.clone(), email_client).await;
 
     tokio::spawn(async move {
@@ -222,7 +227,9 @@ async fn subscribe_returns_a_400_when_fields_are_present_but_empty() {
             .await
             .unwrap();
 
-        assert_eq!(hyper::StatusCode::BAD_REQUEST, response.status(),
+        assert_eq!(
+            hyper::StatusCode::BAD_REQUEST,
+            response.status(),
             "The API did not return 400 Ok when the payload was {}.",
             invalid_body
         );

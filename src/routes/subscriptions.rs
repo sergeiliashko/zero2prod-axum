@@ -3,7 +3,7 @@ use chrono::Utc;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::domain::{NewSubscriber, SubscriberName, SubscriberEmail};
+use crate::domain::{NewSubscriber, SubscriberEmail, SubscriberName};
 
 #[derive(Debug, Deserialize)]
 pub struct FormData {
@@ -11,7 +11,7 @@ pub struct FormData {
     name: String,
 }
 
-impl TryFrom<FormData> for NewSubscriber { 
+impl TryFrom<FormData> for NewSubscriber {
     type Error = String;
     fn try_from(value: FormData) -> Result<Self, Self::Error> {
         let name = SubscriberName::parse(value.name)?;
@@ -19,7 +19,6 @@ impl TryFrom<FormData> for NewSubscriber {
         Ok(Self { email, name })
     }
 }
-
 
 #[tracing::instrument(
     name = "Adding a new subscriber",

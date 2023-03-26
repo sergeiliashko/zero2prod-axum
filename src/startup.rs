@@ -11,7 +11,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
-use crate::{routes, email_client::EmailClient};
+use crate::{email_client::EmailClient, routes};
 
 // In axum, we have only one state type
 #[derive(Clone)]
@@ -35,7 +35,7 @@ pub async fn app(connection_pool: sqlx::PgPool, email_client: EmailClient) -> Ro
     let x_request_id = HeaderName::from_static("x-request-id");
     let state = AppState {
         email_client,
-        connection_pool
+        connection_pool,
     };
 
     Router::new()
@@ -79,5 +79,5 @@ pub async fn app(connection_pool: sqlx::PgPool, email_client: EmailClient) -> Ro
         //.propagate_x_request_id())
         //.with_state(connection_pool)
         .with_state(state)
-        //.with_state(email_client)
+    //.with_state(email_client)
 }

@@ -20,12 +20,18 @@ async fn main() -> Result<(), std::io::Error> {
         .acquire_timeout(Duration::from_secs(3))
         .connect_lazy_with(configuration.database.without_db());
     //.expect("can't connect to database");
-    let sender_email = configuration.email_client.sender()
+    let sender_email = configuration
+        .email_client
+        .sender()
         .expect("Invalid sender email address.");
+
+    let timeout = configuration.email_client.timeout();
+
     let email_client = EmailClient::new(
         configuration.email_client.base_url,
         sender_email,
-        configuration.email_client.authorization_token
+        configuration.email_client.authorization_token,
+        timeout,
     );
     let ipadr = std::net::IpAddr::from_str(&configuration.application.host)
         .expect("Failed to parse app host from config");

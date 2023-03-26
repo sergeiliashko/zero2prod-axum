@@ -1,13 +1,11 @@
 use validator::validate_email;
 
-
 #[derive(Debug, Clone)]
 pub struct SubscriberEmail(String);
 
-
 impl SubscriberEmail {
     pub fn parse(s: String) -> Result<Self, String> {
-        if  validate_email(&s) {
+        if validate_email(&s) {
             Ok(Self(s))
         } else {
             Err(format!("{} is not valid subscriber email.", s))
@@ -17,7 +15,7 @@ impl SubscriberEmail {
 
 impl AsRef<str> for SubscriberEmail {
     fn as_ref(&self) -> &str {
-        &self.0 
+        &self.0
     }
 }
 
@@ -27,8 +25,8 @@ mod tests {
     use claims::assert_err;
     use fake::faker::internet::en::SafeEmail;
     use fake::Fake;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[derive(Debug, Clone)]
     struct ValidEmailFixture(pub String);
@@ -43,7 +41,7 @@ mod tests {
 
     #[quickcheck_macros::quickcheck]
     fn valid_emails_are_parsed_successfully(valid_email: ValidEmailFixture) -> bool {
-        SubscriberEmail::parse(valid_email.0).is_ok() 
+        SubscriberEmail::parse(valid_email.0).is_ok()
     }
 
     #[test]
@@ -55,12 +53,12 @@ mod tests {
     #[test]
     fn email_missing_at_symbol_is_rejected() {
         let email = "ursuladomain.com".to_string();
-        assert_err!(SubscriberEmail::parse(email)); 
+        assert_err!(SubscriberEmail::parse(email));
     }
 
     #[test]
     fn email_missing_subject_is_rejected() {
         let email = "@domain.com".to_string();
-        assert_err!(SubscriberEmail::parse(email)); 
+        assert_err!(SubscriberEmail::parse(email));
     }
 }
