@@ -26,6 +26,18 @@ pub struct TestApp {
     pub db_pool: sqlx::postgres::PgPool,
 }
 
+impl TestApp {
+    pub async fn post_subscriptions(&self, body: String) -> reqwest::Response {
+        reqwest::Client::new()
+            .post(&format!("http://{}/subscriptions", dbg!(&self.address)))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+}
+
 pub async fn spawn_app() -> TestApp {
     // The first time `initialize` is invoked the code in `TRACING` is executed.
     // All other invocations will instead skip execution.
@@ -46,7 +58,6 @@ pub async fn spawn_app() -> TestApp {
         .await
         .expect("Failed to build application.");
 
-    dbg!(application.address());
     //let address = format!("http://127.0.0.1:{}", application.port());
     let address = application.address();
     let _ = tokio::spawn(application.run_until_stopped());
