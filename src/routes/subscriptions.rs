@@ -27,16 +27,8 @@ fn error_chain_fmt(
 pub enum SubscribeError {
     #[error("{0}")]
     ValidationError(String),
-    #[error("Failed to acquire a Postgres connection from the pool")]
-    PoolError(#[source] sqlx::Error),
-    #[error("Failed to insert new subscriber in the database.")]
-    InsertSubscriberError(#[source] sqlx::Error),
-    #[error("Failed to store the confirmation token for a new subscriber.")]
-    StoreTokenError(#[source] sqlx::Error),
-    #[error("Failed to commit SQL transaction to store a new subscriber.")]
-    TransactionCommitError(#[source] sqlx::Error),
-    #[error("Failed to send a confirmation email.")]
-    SendEmailError(#[from] reqwest::Error),
+    #[error("{1}")]
+    UnexpectedError(#[source] Box<dyn std::error::Error>, String),
 }
 
 // We are still using a bespoke implementation of `Debug` // to get a nice report using the error source chain
@@ -52,11 +44,7 @@ impl IntoResponse for SubscribeError {
             Self::ValidationError(_) => {
                 (axum::http::StatusCode::BAD_REQUEST, format!("{}", self)).into_response()
             }
-            Self::SendEmailError(_)
-            | Self::PoolError(_)
-            | Self::InsertSubscriberError(_)
-            | Self::StoreTokenError(_)
-            | Self::TransactionCommitError(_) => (
+            Self::UnexpectedError(_,_) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 format!("{}", self),
             )
@@ -94,30 +82,48 @@ pub async fn subscribe(
     Form(form): Form<FormData>,
 ) -> Result<impl IntoResponse, SubscribeError> {
     let new_subscriber = form.try_into().map_err(SubscribeError::ValidationError)?;
-    let mut transaction = pool.begin().await.map_err(SubscribeError::PoolError)?;
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|e| SubscribeError::UnexpectedError(
+            Box::new(e),
+            "Failed to acquire a Postgres connection from the pool".into(),
+        ))?;
 
     let subscriber_id = insert_subscriber(&mut transaction, &new_subscriber)
         .await
-        .map_err(SubscribeError::InsertSubscriberError)?;
+        .map_err(|e| SubscribeError::UnexpectedError(
+            Box::new(e),
+            "Failed to insert new subscriber in the database.".into(),
+        ))?;
 
     let subscription_token = generate_subscription_token();
 
     store_token(&mut transaction, subscriber_id, &subscription_token)
         .await
-        .map_err(SubscribeError::StoreTokenError)?;
+        .map_err(|e| SubscribeError::UnexpectedError(
+            Box::new(e),
+            "Failed to store the confirmation token for a new subscriber.".into(),
+        ))?;
 
     transaction
         .commit()
         .await
-        .map_err(SubscribeError::TransactionCommitError)?;
+        .map_err(|e| SubscribeError::UnexpectedError(
+            Box::new(e),
+            "Failed to commit SQL transaction to store a new subscriber.".into(),
+        ))?;
 
     send_confirmation_email(
         &base_url.0,
         &email_client,
         new_subscriber,
-        &subscription_token,
-    )
-    .await?;
+        &subscription_token,)
+        .await
+        .map_err(|e| SubscribeError::UnexpectedError(
+            Box::new(e),
+            "Failed to send a confirmation email.".into(),
+        ))?;
 
     Ok(axum::http::StatusCode::OK)
 }
