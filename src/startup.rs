@@ -17,11 +17,21 @@ use crate::{
     routes,
 };
 
+#[derive(Clone)]
+pub struct ApplicationBaseUrl(pub String);
+
 // In axum, we have only one state type
 #[derive(Clone)]
 struct AppState {
     email_client: EmailClient,
     connection_pool: sqlx::PgPool,
+    base_url: ApplicationBaseUrl,
+}
+
+impl axum::extract::FromRef<AppState> for ApplicationBaseUrl {
+    fn from_ref(app_state: &AppState) -> ApplicationBaseUrl {
+        app_state.base_url.clone()
+    }
 }
 impl axum::extract::FromRef<AppState> for EmailClient {
     fn from_ref(app_state: &AppState) -> EmailClient {
@@ -56,7 +66,12 @@ impl Application {
             configuration.email_client.authorization_token,
             timeout,
         );
-        let app = app(connection_pool, email_client).await;
+        let app = app(
+            connection_pool,
+            email_client,
+            configuration.application.base_url,
+        )
+        .await;
 
         let address = format!(
             "{}:{}",
@@ -91,16 +106,22 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> sqlx::postgres::
         .connect_lazy_with(configuration.with_db())
 }
 
-pub async fn app(connection_pool: sqlx::PgPool, email_client: EmailClient) -> Router {
+pub async fn app(
+    connection_pool: sqlx::PgPool,
+    email_client: EmailClient,
+    base_url: String,
+) -> Router {
     let x_request_id = HeaderName::from_static("x-request-id");
     let state = AppState {
         email_client,
         connection_pool,
+        base_url: ApplicationBaseUrl(base_url),
     };
 
     Router::new()
         .route("/health_check", get(routes::healt_check))
         .route("/subscriptions", post(routes::subscribe))
+        .route("/subscriptions/confirm", get(routes::confirm))
         .layer(CorsLayer::new().allow_origin(Any))
         .layer(
             // from https://docs.rs/tower-http/0.2.5/tower_http/request_id/index.html#using-trace
