@@ -10,6 +10,61 @@ use crate::{
     startup::ApplicationBaseUrl,
 };
 
+fn error_chain_fmt(
+    e: &impl std::error::Error,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    writeln!(f, "{}\n", e)?;
+    let mut current = e.source();
+    while let Some(cause) = current {
+        writeln!(f, "Caused by:\n\t{}", cause)?;
+        current = cause.source();
+    }
+    Ok(())
+}
+
+#[derive(thiserror::Error)]
+pub enum SubscribeError {
+    #[error("{0}")]
+    ValidationError(String),
+    #[error("Failed to acquire a Postgres connection from the pool")]
+    PoolError(#[source] sqlx::Error),
+    #[error("Failed to insert new subscriber in the database.")]
+    InsertSubscriberError(#[source] sqlx::Error),
+    #[error("Failed to store the confirmation token for a new subscriber.")]
+    StoreTokenError(#[source] sqlx::Error),
+    #[error("Failed to commit SQL transaction to store a new subscriber.")]
+    TransactionCommitError(#[source] sqlx::Error),
+    #[error("Failed to send a confirmation email.")]
+    SendEmailError(#[from] reqwest::Error),
+}
+
+// We are still using a bespoke implementation of `Debug` // to get a nice report using the error source chain
+impl std::fmt::Debug for SubscribeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        error_chain_fmt(self, f)
+    }
+}
+
+impl IntoResponse for SubscribeError {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            Self::ValidationError(_) => {
+                (axum::http::StatusCode::BAD_REQUEST, format!("{}", self)).into_response()
+            }
+            Self::SendEmailError(_)
+            | Self::PoolError(_)
+            | Self::InsertSubscriberError(_)
+            | Self::StoreTokenError(_)
+            | Self::TransactionCommitError(_) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("{}", self),
+            )
+                .into_response(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct FormData {
     email: String,
@@ -28,55 +83,43 @@ impl TryFrom<FormData> for NewSubscriber {
 #[tracing::instrument(
     name = "Adding a new subscriber",
     skip(form, pool, email_client, base_url),
-    fields( subscriber_email = %form.email, subscriber_name = %form.name)
+    fields( subscriber_email = %form.email, subscriber_name = %form.name),
+    err(Debug),
+    ret
 )]
 pub async fn subscribe(
     State(base_url): State<ApplicationBaseUrl>,
     State(pool): State<sqlx::postgres::PgPool>,
     State(email_client): State<EmailClient>,
     Form(form): Form<FormData>,
-) -> impl IntoResponse {
-    let new_subscriber = match form.try_into() {
-        Ok(subscriber) => subscriber,
-        Err(e) => {
-            tracing::error!("Failed to parse subscriber: {:?}", e);
-            return axum::http::StatusCode::BAD_REQUEST;
-        }
-    };
-    let mut transaction = match pool.begin().await{
-        Ok(transaction) => transaction,
-        Err(_) => return axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-    };
+) -> Result<impl IntoResponse, SubscribeError> {
+    let new_subscriber = form.try_into().map_err(SubscribeError::ValidationError)?;
+    let mut transaction = pool.begin().await.map_err(SubscribeError::PoolError)?;
 
-    let subscriber_id = match insert_subscriber(&mut transaction, &new_subscriber).await {
-        Ok(subscriber_id) => subscriber_id,
-        Err(_) => return axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-    };
+    let subscriber_id = insert_subscriber(&mut transaction, &new_subscriber)
+        .await
+        .map_err(SubscribeError::InsertSubscriberError)?;
 
     let subscription_token = generate_subscription_token();
 
-    if store_token(&mut transaction, subscriber_id, &subscription_token)
+    store_token(&mut transaction, subscriber_id, &subscription_token)
         .await
-        .is_err()
-    {
-        return axum::http::StatusCode::INTERNAL_SERVER_ERROR;
-    }
-    if transaction.commit().await.is_err() {
-        return axum::http::StatusCode::INTERNAL_SERVER_ERROR;
-    }
+        .map_err(SubscribeError::StoreTokenError)?;
 
-    if send_confirmation_email(
+    transaction
+        .commit()
+        .await
+        .map_err(SubscribeError::TransactionCommitError)?;
+
+    send_confirmation_email(
         &base_url.0,
         &email_client,
         new_subscriber,
         &subscription_token,
     )
-    .await
-    .is_err()
-    {
-        return axum::http::StatusCode::INTERNAL_SERVER_ERROR;
-    }
-    axum::http::StatusCode::OK
+    .await?;
+
+    Ok(axum::http::StatusCode::OK)
 }
 
 /// Generate a random 25-characters-long case-sensitive subscription token.
