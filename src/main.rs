@@ -10,7 +10,6 @@ async fn main() -> Result<(), std::io::Error> {
     let configuration = get_configuration().expect("Failed to read configuration file.");
 
     let application = startup::Application::build(configuration).await?;
-
     match application.run_until_stopped().await {
         Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
         Ok(_) => Ok(()),
