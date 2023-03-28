@@ -41,6 +41,8 @@ rand = "0.8.5"
 thiserror = "1"
 anyhow = "1"
 base64 = "0.21"
+sha3 = "0.10.6"
+argon2 = { version = "0.4", features = ["std"] }
 
 [dependencies.reqwest]
 version = "0.11"
