@@ -11,7 +11,7 @@ use crate::{
     startup::ApplicationBaseUrl,
 };
 
-fn error_chain_fmt(
+pub fn error_chain_fmt(
     e: &impl std::error::Error,
     f: &mut std::fmt::Formatter<'_>,
 ) -> std::fmt::Result {
@@ -32,7 +32,6 @@ pub enum SubscribeError {
     UnexpectedError(#[from] anyhow::Error),
 }
 
-// We are still using a bespoke implementation of `Debug` // to get a nice report using the error source chain
 impl std::fmt::Debug for SubscribeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         error_chain_fmt(self, f)
@@ -148,7 +147,7 @@ pub async fn send_confirmation_email(
         confirmation_link
     );
     email_client
-        .send_email(new_subscriber.email, "Welcome!", &html_body, &plain_body)
+        .send_email(&new_subscriber.email, "Welcome!", &html_body, &plain_body)
         .await
 }
 

@@ -11,7 +11,7 @@ async fn get_health_check_returns_200() {
         .request(
             hyper::Request::builder()
                 .method(hyper::Method::GET)
-                .uri(format!("http://{}/health_check", &test_app.address))
+                .uri(format!("{}/health_check", &test_app.address))
                 .body(hyper::body::Body::empty())
                 .expect("Request builder should build request in tests"),
         )

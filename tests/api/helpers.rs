@@ -38,9 +38,17 @@ pub struct TestApp {
 impl TestApp {
     pub async fn post_subscriptions(&self, body: String) -> reqwest::Response {
         reqwest::Client::new()
-            .post(&format!("http://{}/subscriptions", &self.address))
+            .post(&format!("{}/subscriptions", &self.address))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+    pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
+        reqwest::Client::new()
+            .post(&format!("{}/newsletters", &self.address))
+            .json(&body)
             .send()
             .await
             .expect("Failed to execute request.")
@@ -96,7 +104,7 @@ pub async fn spawn_app() -> TestApp {
     let _ = tokio::spawn(application.run_until_stopped());
 
     TestApp {
-        address,
+        address: format!("http://{}", address),
         db_pool,
         email_server,
         port,

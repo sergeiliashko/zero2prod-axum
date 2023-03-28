@@ -122,6 +122,7 @@ pub async fn app(
         .route("/health_check", get(routes::healt_check))
         .route("/subscriptions", post(routes::subscribe))
         .route("/subscriptions/confirm", get(routes::confirm))
+        .route("/newsletters", post(routes::publish_newsletter))
         .layer(CorsLayer::new().allow_origin(Any))
         .layer(
             // from https://docs.rs/tower-http/0.2.5/tower_http/request_id/index.html#using-trace
