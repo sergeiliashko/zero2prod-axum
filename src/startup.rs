@@ -20,17 +20,25 @@ use crate::{
 #[derive(Clone)]
 pub struct ApplicationBaseUrl(pub String);
 
+#[derive(Clone)]
+pub struct HmacSecret(pub secrecy::Secret<String>);
 // In axum, we have only one state type
 #[derive(Clone)]
 struct AppState {
     email_client: EmailClient,
     connection_pool: sqlx::PgPool,
     base_url: ApplicationBaseUrl,
+    hmac_secret: HmacSecret
 }
 
 impl axum::extract::FromRef<AppState> for ApplicationBaseUrl {
     fn from_ref(app_state: &AppState) -> ApplicationBaseUrl {
         app_state.base_url.clone()
+    }
+}
+impl axum::extract::FromRef<AppState> for HmacSecret {
+    fn from_ref(app_state: &AppState) -> HmacSecret {
+        app_state.hmac_secret.clone()
     }
 }
 impl axum::extract::FromRef<AppState> for EmailClient {
@@ -70,6 +78,7 @@ impl Application {
             connection_pool,
             email_client,
             configuration.application.base_url,
+            configuration.application.hmac_secret,
         )
         .await;
 
@@ -110,12 +119,14 @@ pub async fn app(
     connection_pool: sqlx::PgPool,
     email_client: EmailClient,
     base_url: String,
+    hmac_secret: secrecy::Secret<String>,
 ) -> Router {
     let x_request_id = HeaderName::from_static("x-request-id");
     let state = AppState {
         email_client,
         connection_pool,
         base_url: ApplicationBaseUrl(base_url),
+        hmac_secret: HmacSecret(hmac_secret.clone()),
     };
 
     Router::new()
@@ -123,6 +134,8 @@ pub async fn app(
         .route("/subscriptions", post(routes::subscribe))
         .route("/subscriptions/confirm", get(routes::confirm))
         .route("/newsletters", post(routes::publish_newsletter))
+        .route("/", get(routes::home))
+        .route("/login", get(routes::login_form).post(routes::login))
         .layer(CorsLayer::new().allow_origin(Any))
         .layer(
             // from https://docs.rs/tower-http/0.2.5/tower_http/request_id/index.html#using-trace
