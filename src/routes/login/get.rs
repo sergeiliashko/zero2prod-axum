@@ -1,55 +1,18 @@
-use axum::response::{IntoResponse, Html};
-use axum::extract::{Query, State};
-use secrecy::ExposeSecret;
-use hmac::{Hmac, Mac};
+use axum::response::Html;
+use axum_extra::extract::{cookie::Cookie, SignedCookieJar};
 
-use crate::startup::HmacSecret;
-
-#[derive(serde::Deserialize, Clone)] 
-pub struct QueryParams {
-    error: String, 
-    tag: String,
-}
-
-impl QueryParams {
-    fn verify(self, secret: &HmacSecret) -> Result<String, anyhow::Error> {
-        let tag = hex::decode(self.tag)?;
-        let query_string = format!(
-            "error={}", 
-            urlencoding::Encoded::new(&self.error)
-        );
-        let mut mac = Hmac::<sha2::Sha256>::new_from_slice(
-            secret.0.expose_secret().as_bytes()
-        ).unwrap();
-        mac.update(query_string.as_bytes());
-        mac.verify_slice(&tag)?;
-        Ok(self.error)
-    }
-}
-
-pub async fn login_form(
-    State(hmac_secret): State<HmacSecret>,
-    query: Option<Query<QueryParams>>,
-) -> impl IntoResponse {
-    let error_html = match query {
+pub async fn login_form(signed_jar: SignedCookieJar) -> (SignedCookieJar, Html<String>) {
+    let error_html = match signed_jar.get("_flash") {
         None => "".into(),
-        Some(query) => match query.0.verify(&hmac_secret) {
-            Ok(error) => {
-                format!("<p><i>{}</i></p>", htmlescape::encode_minimal(&error))
-            },
-            Err(e) => {
-                tracing::warn!(
-                    error.message= %e,
-                    error.cause_chain = ?e,
-                    "Failed to verify query parameters using the HMAC tag"
-            );
-            "".into()
-            }
-        },
+        Some(cookie) => {
+            format!("<p><i>{}</i></p>", cookie.value())
+        }
     };
 
-    Html(format!(
-        r#"<!DOCTYPE html>
+    (
+        signed_jar.remove(Cookie::named("_flash")),
+        Html(format!(
+            r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
@@ -74,6 +37,7 @@ placeholder="Enter Username"
 </label>
         <button type="submit">Login</button>
     </form>
-</body> </html>"#,))
+</body> </html>"#,
+        )),
+    )
 }
-

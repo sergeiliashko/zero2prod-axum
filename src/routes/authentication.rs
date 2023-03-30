@@ -1,14 +1,14 @@
 use crate::telemetry::spawn_blocking_with_tracing;
-use secrecy::ExposeSecret;
-use argon2::PasswordVerifier;
 use anyhow::Context;
+use argon2::PasswordVerifier;
+use secrecy::ExposeSecret;
 
 #[derive(thiserror::Error, Debug)]
 pub enum AuthError {
     #[error("Invalid credentials.")]
     InvalidCredentials(#[source] anyhow::Error),
     #[error(transparent)]
-    UnexpectedError(#[from] anyhow::Error)
+    UnexpectedError(#[from] anyhow::Error),
 }
 
 pub struct Credentials {
@@ -30,8 +30,7 @@ pub async fn validate_credentials(
     );
 
     if let Some((stored_user_id, stored_password_hash)) =
-        get_stored_credentials(&credentials.username, pool)
-            .await?
+        get_stored_credentials(&credentials.username, pool).await?
     {
         user_id = Some(stored_user_id);
         expected_password_hash = stored_password_hash;
@@ -58,7 +57,7 @@ fn verify_password_hash(
 ) -> Result<(), AuthError> {
     let expected_password_hash = argon2::PasswordHash::new(expected_password_hash.expose_secret())
         .context("Failed to parse hash in PHC string format.")?;
-        //.map_err(AuthError::UnexpectedError)?;
+    //.map_err(AuthError::UnexpectedError)?;
 
     argon2::Argon2::default()
         .verify_password(

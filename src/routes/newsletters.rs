@@ -10,10 +10,9 @@ use base64::Engine;
 use crate::{
     domain::SubscriberEmail,
     email_client::EmailClient,
+    routes::authentication::{validate_credentials, AuthError, Credentials},
     routes::error_chain_fmt,
-    routes::authentication::{Credentials, validate_credentials, AuthError}
 };
-
 
 #[derive(serde::Deserialize)]
 pub struct BodyData {
@@ -59,7 +58,6 @@ impl IntoResponse for PublishError {
         }
     }
 }
-
 
 fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Error> {
     let header_value = headers

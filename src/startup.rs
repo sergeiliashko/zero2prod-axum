@@ -4,6 +4,8 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use axum_extra::extract::cookie::Key;
+use secrecy::ExposeSecret;
 use std::time::Duration;
 use tracing::Span;
 
@@ -28,7 +30,7 @@ struct AppState {
     email_client: EmailClient,
     connection_pool: sqlx::PgPool,
     base_url: ApplicationBaseUrl,
-    hmac_secret: HmacSecret
+    hmac_secret: Key,
 }
 
 impl axum::extract::FromRef<AppState> for ApplicationBaseUrl {
@@ -36,8 +38,8 @@ impl axum::extract::FromRef<AppState> for ApplicationBaseUrl {
         app_state.base_url.clone()
     }
 }
-impl axum::extract::FromRef<AppState> for HmacSecret {
-    fn from_ref(app_state: &AppState) -> HmacSecret {
+impl axum::extract::FromRef<AppState> for axum_extra::extract::cookie::Key {
+    fn from_ref(app_state: &AppState) -> axum_extra::extract::cookie::Key {
         app_state.hmac_secret.clone()
     }
 }
@@ -126,7 +128,7 @@ pub async fn app(
         email_client,
         connection_pool,
         base_url: ApplicationBaseUrl(base_url),
-        hmac_secret: HmacSecret(hmac_secret.clone()),
+        hmac_secret: Key::from(hmac_secret.expose_secret().as_bytes()),
     };
 
     Router::new()
