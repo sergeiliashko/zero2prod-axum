@@ -40,7 +40,7 @@ pub async fn change_password(
 
     let username = get_username(user_id, &pool)
         .await
-        .map_err(|e| AdminDashboardError::UnexpectedError(e.into()))?;
+        .map_err(AdminDashboardError::UnexpectedError)?;
 
     let credentials = Credentials {
         username,
@@ -54,7 +54,7 @@ pub async fn change_password(
                 Redirect::to("/admin/password"),
             )
                 .into_response()),
-            AuthError::UnexpectedError(e) => Err(AdminDashboardError::UnexpectedError(e.into())),
+            AuthError::UnexpectedError(e) => Err(AdminDashboardError::UnexpectedError(e)),
         };
     }
     match crate::authentication::change_password(user_id, form.new_password, &pool).await {
@@ -63,6 +63,6 @@ pub async fn change_password(
             Redirect::to("/admin/password"),
         )
             .into_response()),
-        Err(e) => Err(AdminDashboardError::UnexpectedError(e.into())),
+        Err(e) => Err(AdminDashboardError::UnexpectedError(e)),
     }
 }

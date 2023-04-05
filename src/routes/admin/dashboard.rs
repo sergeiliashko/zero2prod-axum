@@ -32,7 +32,7 @@ pub async fn admin_dashboard(
 ) -> Result<axum::response::Response, AdminDashboardError> {
     let username = get_username(*user_id, &pool)
         .await
-        .map_err(|e| AdminDashboardError::UnexpectedError(e.into()))?;
+        .map_err(AdminDashboardError::UnexpectedError)?;
 
     Ok(Html(format!(
         r#"<!DOCTYPE html>
