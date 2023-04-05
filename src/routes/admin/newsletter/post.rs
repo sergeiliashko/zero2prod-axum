@@ -1,14 +1,18 @@
 use anyhow::Context;
 use axum::{
     extract::State,
-    http::HeaderMap,
-    response::{IntoResponse, Response},
-    Extension, Form, Json,
+    //    http::HeaderMap,
+    response::{IntoResponse, Redirect, Response},
+    Extension,
+    Form,
 };
-use base64::Engine;
+use axum_extra::extract::SignedCookieJar;
+use cookie::Cookie;
+//use base64::Engine;
 
 use crate::{
-    authentication::{validate_credentials, AuthError, Credentials, UserId},
+    //authentication::{Credentials, UserId},
+    authentication::UserId,
     domain::SubscriberEmail,
     email_client::EmailClient,
     routes::error_chain_fmt,
@@ -65,35 +69,35 @@ impl IntoResponse for PublishError {
     }
 }
 
-fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Error> {
-    let header_value = headers
-        .get("Authorization")
-        .context("The 'Authorization' header was missing")?
-        .to_str()
-        .context("The 'Authorization' header was not a valid UTF8 string.")?;
-    let base64encoded_segment = header_value
-        .strip_prefix("Basic ")
-        .context("The authorization scheme was not 'Basic'.")?;
-    let decoded_bytes = base64::engine::general_purpose::STANDARD
-        .decode(base64encoded_segment)
-        .context("Failed to base64-decode 'Basic' credentials.")?;
-    let decoded_credentials = String::from_utf8(decoded_bytes)
-        .context("The decoded credential string is not valid UTF8.")?;
-
-    let mut credentials = decoded_credentials.splitn(2, ':');
-    let username = credentials
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("A username must be provided in 'Basic' auth."))?
-        .to_string();
-    let password = credentials
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("A password must be provided in 'Basic' auth."))?
-        .to_string();
-    Ok(Credentials {
-        username,
-        password: secrecy::Secret::new(password),
-    })
-}
+//fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Error> {
+//    let header_value = headers
+//        .get("Authorization")
+//        .context("The 'Authorization' header was missing")?
+//        .to_str()
+//        .context("The 'Authorization' header was not a valid UTF8 string.")?;
+//    let base64encoded_segment = header_value
+//        .strip_prefix("Basic ")
+//        .context("The authorization scheme was not 'Basic'.")?;
+//    let decoded_bytes = base64::engine::general_purpose::STANDARD
+//        .decode(base64encoded_segment)
+//        .context("Failed to base64-decode 'Basic' credentials.")?;
+//    let decoded_credentials = String::from_utf8(decoded_bytes)
+//        .context("The decoded credential string is not valid UTF8.")?;
+//
+//    let mut credentials = decoded_credentials.splitn(2, ':');
+//    let username = credentials
+//        .next()
+//        .ok_or_else(|| anyhow::anyhow!("A username must be provided in 'Basic' auth."))?
+//        .to_string();
+//    let password = credentials
+//        .next()
+//        .ok_or_else(|| anyhow::anyhow!("A password must be provided in 'Basic' auth."))?
+//        .to_string();
+//    Ok(Credentials {
+//        username,
+//        password: secrecy::Secret::new(password),
+//    })
+//}
 
 #[tracing::instrument(
     name = "Publish a newsletter",
@@ -107,6 +111,7 @@ pub async fn publish_newsletter(
     State(email_client): State<EmailClient>,
     Extension(_user_id): Extension<UserId>,
     //headers: HeaderMap,
+    signed_jar: SignedCookieJar,
     Form(body): Form<BodyData>,
 ) -> Result<impl IntoResponse, PublishError> {
     //let credentials = basic_authentication(&headers).map_err(PublishError::AuthError)?;
@@ -138,7 +143,11 @@ pub async fn publish_newsletter(
             }
         }
     }
-    Ok(axum::http::StatusCode::OK)
+
+    Ok((
+        signed_jar.add(Cookie::new("_flash", "Newsletter was sent successfully.")),
+        Redirect::to("/admin/newsletter"),
+    ))
 }
 
 struct ConfirmedSubscriber {

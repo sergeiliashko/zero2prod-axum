@@ -34,7 +34,7 @@ pub async fn send_newsletter(signed_jar: SignedCookieJar) -> impl IntoResponse {
             <input
                 type="text"
                 placeholder="Enter html content"
-                name="conntet_html"
+                name="html"
             >
         </label>
         <br>
@@ -42,7 +42,7 @@ pub async fn send_newsletter(signed_jar: SignedCookieJar) -> impl IntoResponse {
             <input
                 type="text"
                 placeholder="Enter text content"
-                name="content_text"
+                name="text"
             >
         </label>
         <br>

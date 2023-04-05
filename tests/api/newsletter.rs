@@ -78,8 +78,10 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
     });
 
     let response = app.post_newsletters(&newsletter_request_body).await;
+    assert_is_redirect_to(&response, "/admin/newsletter");
 
-    assert_eq!(response.status().as_u16(), 200);
+    let html_page = app.get_newsletter_html().await;
+    assert!(html_page.contains("<p><i>Newsletter was sent successfully.</i></p>"));
 }
 
 #[tokio::test]
@@ -111,7 +113,10 @@ async fn newsletters_are_delivered_to_confirmed_subscribers() {
 
     let response = app.post_newsletters(&newsletter_request_body).await;
 
-    assert_eq!(response.status().as_u16(), 200);
+    assert_is_redirect_to(&response, "/admin/newsletter");
+
+    let html_page = app.get_newsletter_html().await;
+    assert!(html_page.contains("<p><i>Newsletter was sent successfully.</i></p>"));
 }
 
 async fn create_unconfirmed_subscriber(app: &TestApp) -> ConfirmationLinks {
