@@ -10,7 +10,7 @@ use base64::Engine;
 use crate::{
     domain::SubscriberEmail,
     email_client::EmailClient,
-    routes::authentication::{validate_credentials, AuthError, Credentials},
+    authentication::{validate_credentials, AuthError, Credentials},
     routes::error_chain_fmt,
 };
 

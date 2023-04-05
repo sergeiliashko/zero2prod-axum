@@ -2,10 +2,11 @@ use axum::extract::{Form, State};
 use axum::response::{IntoResponse, Redirect};
 use axum_extra::extract::{cookie::Cookie, SignedCookieJar};
 
-use crate::routes::{
+use crate::{
     authentication::{validate_credentials, AuthError, Credentials},
-    error_chain_fmt,
+    routes::error_chain_fmt,
 };
+use crate::session_state::TypedSession;
 
 #[derive(thiserror::Error)]
 pub enum LoginError {
@@ -23,7 +24,7 @@ impl std::fmt::Debug for LoginError {
 
 impl IntoResponse for LoginError {
     fn into_response(self) -> axum::response::Response {
-        self.to_string().into_response()
+        Redirect::to("/login").into_response()
     }
 }
 
@@ -34,14 +35,16 @@ pub struct FormData {
 }
 
 #[tracing::instrument(
-skip(form, pool),
-fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
+    skip(form, pool, signed_jar, session),
+    fields(username=tracing::field::Empty, user_id=tracing::field::Empty),
+    err(Debug),
 )]
 pub async fn login(
     State(pool): State<sqlx::PgPool>,
+    mut session: TypedSession,
     signed_jar: SignedCookieJar,
     Form(form): Form<FormData>,
-) -> Result<Redirect, (SignedCookieJar, Redirect)> {
+) -> Result<Redirect, (SignedCookieJar, LoginError)> {
     let credentials = Credentials {
         username: form.username,
         password: form.password,
@@ -50,17 +53,22 @@ pub async fn login(
     match validate_credentials(credentials, &pool).await {
         Ok(user_id) => {
             tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
-            Ok(Redirect::to("/"))
+            session.insert_user_id(user_id)
+                .map_err(|e| login_redirect_on_err(LoginError::UnexpectedError(e.into()), signed_jar))?;
+            Ok(Redirect::to("/admin/dashboard"))
         }
         Err(e) => {
             let e = match e {
                 AuthError::InvalidCredentials(_) => LoginError::AuthError(e.into()),
                 AuthError::UnexpectedError(_) => LoginError::UnexpectedError(e.into()),
             };
-            Err((
-                signed_jar.add(Cookie::new("_flash", e.to_string())),
-                Redirect::to("/login"),
-            ))
+            Err(login_redirect_on_err(e, signed_jar))
         }
     }
+}
+
+fn login_redirect_on_err(e: LoginError, signed_jar: SignedCookieJar) -> (SignedCookieJar, LoginError) {
+    ( signed_jar.add(Cookie::new("_flash", e.to_string())),
+        e,
+    )
 }

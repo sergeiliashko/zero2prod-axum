@@ -1,3 +1,6 @@
+use async_fred_session::RedisSessionStore;
+use axum_sessions::SessionLayer;
+
 use axum::{
     body::{Body, BoxBody},
     http::{HeaderName, Request, Response},
@@ -5,6 +8,7 @@ use axum::{
     Router,
 };
 use axum_extra::extract::cookie::Key;
+use fred::{types::RedisConfig, pool::RedisPool};
 use secrecy::ExposeSecret;
 use std::time::Duration;
 use tracing::Span;
@@ -16,7 +20,7 @@ use tower_http::trace::TraceLayer;
 use crate::{
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
-    routes,
+    routes, authentication::reject_anonymous_users,
 };
 
 #[derive(Clone)]
@@ -60,7 +64,7 @@ pub struct Application {
 }
 
 impl Application {
-    pub async fn build(configuration: Settings) -> Result<Self, std::io::Error> {
+    pub async fn build(configuration: Settings) -> Result<Self, anyhow::Error> {
         let connection_pool = get_connection_pool(&configuration.database);
 
         let sender_email = configuration
@@ -81,8 +85,9 @@ impl Application {
             email_client,
             configuration.application.base_url,
             configuration.application.hmac_secret,
+            configuration.redis_uri,
         )
-        .await;
+        .await?;
 
         let address = format!(
             "{}:{}",
@@ -122,7 +127,18 @@ pub async fn app(
     email_client: EmailClient,
     base_url: String,
     hmac_secret: secrecy::Secret<String>,
-) -> Router {
+    redis_uri: secrecy::Secret<String>
+) -> Result<Router, anyhow::Error> {
+
+    let cfg = RedisConfig::from_url(redis_uri.expose_secret()).unwrap();
+    let rds_pool = RedisPool::new(cfg, 6).unwrap();
+    rds_pool.connect(None);
+    rds_pool.wait_for_connect().await.unwrap();
+
+    let redis_session_store = RedisSessionStore::from_pool(rds_pool, Some("zero2prod-sessions/".into()));
+    let session_layer = SessionLayer::new(redis_session_store, hmac_secret.expose_secret().as_bytes()).with_secure(false);
+
+
     let x_request_id = HeaderName::from_static("x-request-id");
     let state = AppState {
         email_client,
@@ -131,13 +147,22 @@ pub async fn app(
         hmac_secret: Key::from(hmac_secret.expose_secret().as_bytes()),
     };
 
-    Router::new()
+    let router = Router::new()
         .route("/health_check", get(routes::healt_check))
         .route("/subscriptions", post(routes::subscribe))
         .route("/subscriptions/confirm", get(routes::confirm))
         .route("/newsletters", post(routes::publish_newsletter))
         .route("/", get(routes::home))
         .route("/login", get(routes::login_form).post(routes::login))
+        .merge(
+            Router::new()
+                .nest("/admin", 
+                    Router::new()
+                        .route("/dashboard", get(routes::admin_dashboard))
+                        .route("/password", get(routes::change_password_form).post(routes::change_password))
+                        .route("/logout", post(routes::log_out))
+                        .layer(axum::middleware::from_fn(reject_anonymous_users))
+                ))
         .layer(CorsLayer::new().allow_origin(Any))
         .layer(
             // from https://docs.rs/tower-http/0.2.5/tower_http/request_id/index.html#using-trace
@@ -173,8 +198,10 @@ pub async fn app(
                 //.set_x_request_id(MakeRequestUuid)
                 .layer(PropagateRequestIdLayer::new(x_request_id)),
         )
+        .layer(session_layer)
         //.propagate_x_request_id())
         //.with_state(connection_pool)
-        .with_state(state)
+        .with_state(state);
     //.with_state(email_client)
+    Ok(router)
 }
