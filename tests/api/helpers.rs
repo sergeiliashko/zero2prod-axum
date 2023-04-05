@@ -40,6 +40,13 @@ pub struct TestApp {
 }
 
 impl TestApp {
+    pub async fn get_send_newsletter(&self) -> reqwest::Response {
+        self.api_client
+            .get(&format!("{}/admin/newsletter", &self.address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
     pub async fn post_logout(&self) -> reqwest::Response {
         self.api_client
             .post(&format!("{}/admin/logout", &self.address))
@@ -60,9 +67,9 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
-    pub async fn post_change_password<T>(&self, body: &T) -> reqwest::Response 
-        where
-            T: serde::Serialize,
+    pub async fn post_change_password<T>(&self, body: &T) -> reqwest::Response
+    where
+        T: serde::Serialize,
     {
         self.api_client
             .post(&format!("{}/admin/password", &self.address))
@@ -81,11 +88,7 @@ impl TestApp {
     }
 
     pub async fn get_admin_dashboard_html(&self) -> String {
-        self.get_admin_dashboard()
-            .await
-            .text()
-            .await
-            .unwrap()
+        self.get_admin_dashboard().await.text().await.unwrap()
     }
 
     pub async fn get_login_html(&self) -> String {
@@ -120,11 +123,14 @@ impl TestApp {
             .await
             .expect("Failed to execute request.")
     }
-    pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
+    pub async fn post_newsletters<T>(&self, body: &T) -> reqwest::Response
+    where
+        T: serde::Serialize,
+    {
         self.api_client
-            .post(&format!("{}/newsletters", &self.address))
-            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
-            .json(&body)
+            .post(&format!("{}/admin/newsletter", &self.address))
+            //.basic_auth(&self.test_user.username, Some(&self.test_user.password))
+            .form(&body)
             .send()
             .await
             .expect("Failed to execute request.")

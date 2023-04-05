@@ -1,17 +1,17 @@
+use axum::response::IntoResponse;
 use axum::{extract::FromRequestParts, http::request::Parts};
 use axum_sessions::extractors::WritableSession;
-use uuid::Uuid;
 use serde_json::error::Error;
-use axum::response::IntoResponse;
+use uuid::Uuid;
 
 use axum::async_trait;
 
 impl TypedSession {
     const USER_ID_KEY: &'static str = "user_id";
-    pub fn renew(&mut self) { 
+    pub fn renew(&mut self) {
         self.0.regenerate()
     }
-    pub fn insert_user_id(& mut self, user_id: Uuid) -> Result<(), Error> { 
+    pub fn insert_user_id(&mut self, user_id: Uuid) -> Result<(), Error> {
         self.0.insert(Self::USER_ID_KEY, user_id)
     }
     pub fn get_user_id(&self) -> Option<Uuid> {
@@ -31,11 +31,14 @@ where
     type Rejection = axum::response::Response;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        if let Ok(session) = WritableSession::from_request_parts(parts, _state).await{
+        if let Ok(session) = WritableSession::from_request_parts(parts, _state).await {
             Ok(TypedSession(session))
         } else {
-            Err((axum::http::StatusCode::INTERNAL_SERVER_ERROR, "were not able to extract writablesession").into_response())
+            Err((
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "were not able to extract writablesession",
+            )
+                .into_response())
         }
-
     }
 }

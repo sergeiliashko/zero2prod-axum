@@ -27,7 +27,7 @@ async fn redirect_to_admin_dashboard_after_login_success() {
 
     let login_body = serde_json::json!({
         "username": &app.test_user.username,
-        "password": &app.test_user.password 
+        "password": &app.test_user.password
     });
 
     let response = app.post_login(&login_body).await;

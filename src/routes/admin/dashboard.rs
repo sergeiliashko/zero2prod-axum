@@ -1,15 +1,11 @@
-use axum::{response::{IntoResponse, Html}, extract::State, Extension};
 use anyhow::Context;
+use axum::{
+    extract::State,
+    response::{Html, IntoResponse},
+    Extension,
+};
 
-use crate::{routes::error_chain_fmt, authentication::UserId};
-
-// Return an opaque 500 while preserving the error's root cause for logging. 
-//fn e500<T>(e: T) -> actix_web::Error
-//where
-//    T: std::fmt::Debug + std::fmt::Display + 'static 
-//{
-//    actix_web::error::ErrorInternalServerError(e) 
-//}
+use crate::{authentication::UserId, routes::error_chain_fmt};
 
 #[derive(thiserror::Error)]
 pub enum AdminDashboardError {
@@ -29,15 +25,11 @@ impl IntoResponse for AdminDashboardError {
     }
 }
 
-#[tracing::instrument(
-    skip(pool, user_id),
-    err(Debug),
-)]
+#[tracing::instrument(skip(pool, user_id), err(Debug))]
 pub async fn admin_dashboard(
     Extension(user_id): Extension<UserId>,
     State(pool): State<sqlx::PgPool>,
-) -> Result<axum::response::Response, AdminDashboardError>   {
-
+) -> Result<axum::response::Response, AdminDashboardError> {
     let username = get_username(*user_id, &pool)
         .await
         .map_err(|e| AdminDashboardError::UnexpectedError(e.into()))?;
@@ -53,6 +45,7 @@ pub async fn admin_dashboard(
     <p>Welcome {username}!</p>
     <p>Available actions:</p>
     <ol>
+        <li><a href="/admin/newsletter">Send newsletter</a></li>
         <li><a href="/admin/password">Change password</a></li>
         <li>
           <form name="logoutForm" action="/admin/logout" method="post">
@@ -61,20 +54,22 @@ pub async fn admin_dashboard(
         </li>
     </ol>
 </body> </html>"#,
-    )).into_response())
+    ))
+    .into_response())
 }
 
-#[tracing::instrument(name = "Get username", skip(pool))] 
+#[tracing::instrument(name = "Get username", skip(pool))]
 pub async fn get_username(
     user_id: uuid::Uuid,
-    pool: &sqlx::PgPool
+    pool: &sqlx::PgPool,
 ) -> Result<String, anyhow::Error> {
-    let row = sqlx::query!( r#"
+    let row = sqlx::query!(
+        r#"
         SELECT username 
         FROM users
         WHERE user_id = $1
         "#,
-        user_id, 
+        user_id,
     )
     .fetch_one(pool)
     .await

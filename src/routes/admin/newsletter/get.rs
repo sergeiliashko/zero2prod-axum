@@ -2,7 +2,7 @@ use axum::response::{Html, IntoResponse};
 use axum_extra::extract::SignedCookieJar;
 use cookie::Cookie;
 
-pub async fn change_password_form(signed_jar: SignedCookieJar) -> impl IntoResponse {
+pub async fn send_newsletter(signed_jar: SignedCookieJar) -> impl IntoResponse {
     let error_html = match signed_jar.get("_flash") {
         None => "".into(),
         Some(cookie) => {
@@ -17,36 +17,36 @@ pub async fn change_password_form(signed_jar: SignedCookieJar) -> impl IntoRespo
 <html lang="en">
 <head>
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
-    <title>Change Password</title>
+    <title>Send Newsletter</title>
 </head>
 <body>
     {error_html}
-    <form action="/admin/password" method="post">
-        <label>Current password
+    <form action="/admin/newsletter" method="post">
+        <label>Title
                 <input
-                type="password"
-                placeholder="Enter current password"
-                name="current_password"
+                type="text"
+                placeholder="Enter title of your email"
+                name="title"
             >
         </label>
         <br>
-        <label>New password
+        <label>HTML content
             <input
-                type="password"
-                placeholder="Enter new password"
-                name="new_password"
+                type="text"
+                placeholder="Enter html content"
+                name="conntet_html"
             >
         </label>
         <br>
-        <label>Confirm new password
+        <label>TEXT content
             <input
-                type="password"
-                placeholder="Type the new password again"
-                name="new_password_check"
+                type="text"
+                placeholder="Enter text content"
+                name="content_text"
             >
         </label>
         <br>
-        <button type="submit">Change password</button>
+        <button type="submit">Send newsletter</button>
 </form>
     <p><a href="/admin/dashboard">&lt;- Back</a></p>
 </body>

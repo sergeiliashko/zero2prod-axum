@@ -3,29 +3,35 @@ use axum::{
     extract::State,
     http::HeaderMap,
     response::{IntoResponse, Response},
-    Json,
+    Extension, Form, Json,
 };
 use base64::Engine;
 
 use crate::{
+    authentication::{validate_credentials, AuthError, Credentials, UserId},
     domain::SubscriberEmail,
     email_client::EmailClient,
-    authentication::{validate_credentials, AuthError, Credentials},
     routes::error_chain_fmt,
 };
+
+//#[derive(serde::Deserialize)]
+//pub struct BodyData {
+//    title: String,
+//    content: Content,
+//}
+
+//#[derive(serde::Deserialize)]
+//pub struct Content {
+//    html: String,
+//    text: String,
+//}
 
 #[derive(serde::Deserialize)]
 pub struct BodyData {
     title: String,
-    content: Content,
-}
-
-#[derive(serde::Deserialize)]
-pub struct Content {
     html: String,
     text: String,
 }
-
 #[derive(thiserror::Error)]
 pub enum PublishError {
     #[error("Authentication failed")]
@@ -91,7 +97,7 @@ fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Erro
 
 #[tracing::instrument(
     name = "Publish a newsletter",
-    skip(pool, email_client, headers, body),
+    skip(pool, email_client, body),
     //fields( subscriber_email = %form.email, subscriber_name = %form.name),
     err(Debug),
     ret
@@ -99,29 +105,25 @@ fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Erro
 pub async fn publish_newsletter(
     State(pool): State<sqlx::PgPool>,
     State(email_client): State<EmailClient>,
-    headers: HeaderMap,
-    Json(body): Json<BodyData>,
+    Extension(_user_id): Extension<UserId>,
+    //headers: HeaderMap,
+    Form(body): Form<BodyData>,
 ) -> Result<impl IntoResponse, PublishError> {
-    let credentials = basic_authentication(&headers).map_err(PublishError::AuthError)?;
-    tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
-    let user_id = validate_credentials(credentials, &pool)
-        .await
-        .map_err(|e| match e {
-            AuthError::InvalidCredentials(_) => PublishError::AuthError(e.into()),
-            AuthError::UnexpectedError(_) => PublishError::UnexpectedError(e.into()),
-        })?;
-    tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
+    //let credentials = basic_authentication(&headers).map_err(PublishError::AuthError)?;
+    //tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
+    //let user_id = validate_credentials(credentials, &pool)
+    //    .await
+    //    .map_err(|e| match e {
+    //        AuthError::InvalidCredentials(_) => PublishError::AuthError(e.into()),
+    //        AuthError::UnexpectedError(_) => PublishError::UnexpectedError(e.into()),
+    //    })?;
+    //tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
     let subscribers = get_confirmed_subscribers(&pool).await?;
     for subscriber in subscribers {
         match subscriber {
             Ok(subscriber) => {
                 email_client
-                    .send_email(
-                        &subscriber.email,
-                        &body.title,
-                        &body.content.html,
-                        &body.content.text,
-                    )
+                    .send_email(&subscriber.email, &body.title, &body.html, &body.text)
                     .await
                     .with_context(|| {
                         format!("Failed to send newsletter issue to {}", subscriber.email)

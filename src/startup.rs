@@ -8,7 +8,7 @@ use axum::{
     Router,
 };
 use axum_extra::extract::cookie::Key;
-use fred::{types::RedisConfig, pool::RedisPool};
+use fred::{pool::RedisPool, types::RedisConfig};
 use secrecy::ExposeSecret;
 use std::time::Duration;
 use tracing::Span;
@@ -18,9 +18,10 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::trace::TraceLayer;
 
 use crate::{
+    authentication::reject_anonymous_users,
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
-    routes, authentication::reject_anonymous_users,
+    routes,
 };
 
 #[derive(Clone)]
@@ -127,17 +128,18 @@ pub async fn app(
     email_client: EmailClient,
     base_url: String,
     hmac_secret: secrecy::Secret<String>,
-    redis_uri: secrecy::Secret<String>
+    redis_uri: secrecy::Secret<String>,
 ) -> Result<Router, anyhow::Error> {
-
     let cfg = RedisConfig::from_url(redis_uri.expose_secret()).unwrap();
     let rds_pool = RedisPool::new(cfg, 6).unwrap();
     rds_pool.connect(None);
     rds_pool.wait_for_connect().await.unwrap();
 
-    let redis_session_store = RedisSessionStore::from_pool(rds_pool, Some("zero2prod-sessions/".into()));
-    let session_layer = SessionLayer::new(redis_session_store, hmac_secret.expose_secret().as_bytes()).with_secure(false);
-
+    let redis_session_store =
+        RedisSessionStore::from_pool(rds_pool, Some("zero2prod-sessions/".into()));
+    let session_layer =
+        SessionLayer::new(redis_session_store, hmac_secret.expose_secret().as_bytes())
+            .with_secure(false);
 
     let x_request_id = HeaderName::from_static("x-request-id");
     let state = AppState {
@@ -148,21 +150,28 @@ pub async fn app(
     };
 
     let router = Router::new()
+        .route("/", get(routes::home))
         .route("/health_check", get(routes::healt_check))
         .route("/subscriptions", post(routes::subscribe))
         .route("/subscriptions/confirm", get(routes::confirm))
-        .route("/newsletters", post(routes::publish_newsletter))
-        .route("/", get(routes::home))
         .route("/login", get(routes::login_form).post(routes::login))
         .merge(
-            Router::new()
-                .nest("/admin", 
-                    Router::new()
-                        .route("/dashboard", get(routes::admin_dashboard))
-                        .route("/password", get(routes::change_password_form).post(routes::change_password))
-                        .route("/logout", post(routes::log_out))
-                        .layer(axum::middleware::from_fn(reject_anonymous_users))
-                ))
+            Router::new().nest(
+                "/admin",
+                Router::new()
+                    .route("/dashboard", get(routes::admin_dashboard))
+                    .route(
+                        "/password",
+                        get(routes::change_password_form).post(routes::change_password),
+                    )
+                    .route("/logout", post(routes::log_out))
+                    .route(
+                        "/newsletter",
+                        get(routes::send_newsletter).post(routes::publish_newsletter),
+                    )
+                    .layer(axum::middleware::from_fn(reject_anonymous_users)),
+            ),
+        )
         .layer(CorsLayer::new().allow_origin(Any))
         .layer(
             // from https://docs.rs/tower-http/0.2.5/tower_http/request_id/index.html#using-trace

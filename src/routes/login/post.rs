@@ -2,11 +2,11 @@ use axum::extract::{Form, State};
 use axum::response::{IntoResponse, Redirect};
 use axum_extra::extract::{cookie::Cookie, SignedCookieJar};
 
+use crate::session_state::TypedSession;
 use crate::{
     authentication::{validate_credentials, AuthError, Credentials},
     routes::error_chain_fmt,
 };
-use crate::session_state::TypedSession;
 
 #[derive(thiserror::Error)]
 pub enum LoginError {
@@ -53,8 +53,9 @@ pub async fn login(
     match validate_credentials(credentials, &pool).await {
         Ok(user_id) => {
             tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
-            session.insert_user_id(user_id)
-                .map_err(|e| login_redirect_on_err(LoginError::UnexpectedError(e.into()), signed_jar))?;
+            session.insert_user_id(user_id).map_err(|e| {
+                login_redirect_on_err(LoginError::UnexpectedError(e.into()), signed_jar)
+            })?;
             Ok(Redirect::to("/admin/dashboard"))
         }
         Err(e) => {
@@ -67,8 +68,9 @@ pub async fn login(
     }
 }
 
-fn login_redirect_on_err(e: LoginError, signed_jar: SignedCookieJar) -> (SignedCookieJar, LoginError) {
-    ( signed_jar.add(Cookie::new("_flash", e.to_string())),
-        e,
-    )
+fn login_redirect_on_err(
+    e: LoginError,
+    signed_jar: SignedCookieJar,
+) -> (SignedCookieJar, LoginError) {
+    (signed_jar.add(Cookie::new("_flash", e.to_string())), e)
 }
