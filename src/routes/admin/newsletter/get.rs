@@ -9,6 +9,7 @@ pub async fn send_newsletter(signed_jar: SignedCookieJar) -> impl IntoResponse {
             format!("<p><i>{}</i></p>", cookie.value())
         }
     };
+    let idempotency_key = uuid::Uuid::new_v4();
 
     (
         signed_jar.remove(Cookie::named("_flash")),
@@ -34,7 +35,7 @@ pub async fn send_newsletter(signed_jar: SignedCookieJar) -> impl IntoResponse {
             <input
                 type="text"
                 placeholder="Enter html content"
-                name="html"
+                name="html_content"
             >
         </label>
         <br>
@@ -42,10 +43,11 @@ pub async fn send_newsletter(signed_jar: SignedCookieJar) -> impl IntoResponse {
             <input
                 type="text"
                 placeholder="Enter text content"
-                name="text"
+                name="text_content"
             >
         </label>
         <br>
+        <input hidden type="text" name="idempotency_key" value="{idempotency_key}">
         <button type="submit">Send newsletter</button>
 </form>
     <p><a href="/admin/dashboard">&lt;- Back</a></p>

@@ -124,11 +124,11 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
-    pub async fn get_newsletter_html(&self) -> String {
-        self.get_newsletter().await.text().await.unwrap()
+    pub async fn get_publish_newsletter_html(&self) -> String {
+        self.get_publish_newsletter().await.text().await.unwrap()
     }
 
-    pub async fn get_newsletter(&self) -> reqwest::Response {
+    pub async fn get_publish_newsletter(&self) -> reqwest::Response {
         self.api_client
             .get(&format!("{}/admin/newsletter", &self.address))
             .send()
@@ -136,7 +136,7 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
-    pub async fn post_newsletters<T>(&self, body: &T) -> reqwest::Response
+    pub async fn post_publish_newsletter<T>(&self, body: &T) -> reqwest::Response
     where
         T: serde::Serialize,
     {

@@ -1,5 +1,18 @@
 {
   "db": "PostgreSQL",
+  "0e5cb921313be374a1565a52e3f3238829b2ff30627a7f28c62f43e589d3c530": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        INSERT INTO idempotency (\n            user_id,\n            idempotency_key,\n            created_at \n        )\n        VALUES ($1, $2, now()) \n        ON CONFLICT DO NOTHING \n        "
+  },
   "1a66539537c71a52ffacfe03719f39c0e6b174a6cecccbfba7750371af8cd19d": {
     "describe": {
       "columns": [
@@ -46,6 +59,45 @@
     },
     "query": "\n        SELECT username \n        FROM users\n        WHERE user_id = $1\n        "
   },
+  "56c7fde34fa1a4330c12877854206afd70c698e285586d1306ea9d62f8d3c018": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Text",
+          "Int2",
+          {
+            "Custom": {
+              "kind": {
+                "Array": {
+                  "Custom": {
+                    "kind": {
+                      "Composite": [
+                        [
+                          "name",
+                          "Text"
+                        ],
+                        [
+                          "value",
+                          "Bytea"
+                        ]
+                      ]
+                    },
+                    "name": "header_pair"
+                  }
+                }
+              },
+              "name": "_header_pair"
+            }
+          },
+          "Bytea"
+        ]
+      }
+    },
+    "query": "\n        UPDATE idempotency \n        SET \n            response_status_code = $3,\n            response_headers = $4,\n            response_body = $5\n        WHERE\n            user_id = $1 AND\n            idempotency_key = $2\n        "
+  },
   "6b12be49c60adaa12ab16b2145af2b86f5cdf9f9f2f293515f7e8b6346e1acc1": {
     "describe": {
       "columns": [],
@@ -86,6 +138,62 @@
       }
     },
     "query": "\n                UPDATE users\n                SET password_hash = $1\n                WHERE user_id = $2\n            "
+  },
+  "a0d30dda7c6ee128e77517851ebcd63dec978ad766f59f22ee683cd058b49727": {
+    "describe": {
+      "columns": [
+        {
+          "name": "response_status_code!",
+          "ordinal": 0,
+          "type_info": "Int2"
+        },
+        {
+          "name": "response_headers: Vec<HeaderPairRecord>",
+          "ordinal": 1,
+          "type_info": {
+            "Custom": {
+              "kind": {
+                "Array": {
+                  "Custom": {
+                    "kind": {
+                      "Composite": [
+                        [
+                          "name",
+                          "Text"
+                        ],
+                        [
+                          "value",
+                          "Bytea"
+                        ]
+                      ]
+                    },
+                    "name": "header_pair"
+                  }
+                }
+              },
+              "name": "_header_pair"
+            }
+          }
+        },
+        {
+          "name": "response_body!",
+          "ordinal": 2,
+          "type_info": "Bytea"
+        }
+      ],
+      "nullable": [
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            SELECT\n                response_status_code as \"response_status_code!\",\n                response_headers as \"response_headers: Vec<HeaderPairRecord>\",\n                response_body as \"response_body!\"\n            FROM idempotency\n            WHERE\n              user_id = $1 AND\n              idempotency_key = $2 \n        "
   },
   "a71a1932b894572106460ca2e34a63dc0cb8c1ba7a70547add1cddbb68133c2b": {
     "describe": {

@@ -15,6 +15,7 @@ use crate::{
     authentication::UserId,
     domain::SubscriberEmail,
     email_client::EmailClient,
+    idempotency::{save_response, try_processing, IdempotencyKey, NextAction},
     routes::error_chain_fmt,
 };
 
@@ -33,8 +34,9 @@ use crate::{
 #[derive(serde::Deserialize)]
 pub struct BodyData {
     title: String,
-    html: String,
-    text: String,
+    html_content: String,
+    text_content: String,
+    idempotency_key: String,
 }
 #[derive(thiserror::Error)]
 pub enum PublishError {
@@ -101,7 +103,7 @@ impl IntoResponse for PublishError {
 
 #[tracing::instrument(
     name = "Publish a newsletter",
-    skip(pool, email_client, body),
+    skip(pool, email_client, form),
     //fields( subscriber_email = %form.email, subscriber_name = %form.name),
     err(Debug),
     ret
@@ -109,11 +111,11 @@ impl IntoResponse for PublishError {
 pub async fn publish_newsletter(
     State(pool): State<sqlx::PgPool>,
     State(email_client): State<EmailClient>,
-    Extension(_user_id): Extension<UserId>,
+    Extension(user_id): Extension<UserId>,
     //headers: HeaderMap,
     signed_jar: SignedCookieJar,
-    Form(body): Form<BodyData>,
-) -> Result<impl IntoResponse, PublishError> {
+    Form(form): Form<BodyData>,
+) -> Result<Response, PublishError> {
     //let credentials = basic_authentication(&headers).map_err(PublishError::AuthError)?;
     //tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
     //let user_id = validate_credentials(credentials, &pool)
@@ -123,12 +125,34 @@ pub async fn publish_newsletter(
     //        AuthError::UnexpectedError(_) => PublishError::UnexpectedError(e.into()),
     //    })?;
     //tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
+    let BodyData {
+        title,
+        text_content,
+        html_content,
+        idempotency_key,
+    } = form;
+    let idempotency_key: IdempotencyKey = idempotency_key.try_into()?;
+
+    let transaction = match try_processing(&pool, &idempotency_key, *user_id).await? {
+        NextAction::StartProcessing(t) => t,
+        NextAction::ReturnSavedResponse(saved_response) => {
+            return Ok((
+                signed_jar.add(Cookie::new(
+                    "_flash",
+                    "The newsletter issue has been published!",
+                )),
+                saved_response,
+            )
+                .into_response())
+        }
+    };
+
     let subscribers = get_confirmed_subscribers(&pool).await?;
     for subscriber in subscribers {
         match subscriber {
             Ok(subscriber) => {
                 email_client
-                    .send_email(&subscriber.email, &body.title, &body.html, &body.text)
+                    .send_email(&subscriber.email, &title, &html_content, &text_content)
                     .await
                     .with_context(|| {
                         format!("Failed to send newsletter issue to {}", subscriber.email)
@@ -144,10 +168,17 @@ pub async fn publish_newsletter(
         }
     }
 
-    Ok((
-        signed_jar.add(Cookie::new("_flash", "Newsletter was sent successfully.")),
+    let response = (
+        signed_jar.add(Cookie::new(
+            "_flash",
+            "The newsletter issue has been published!",
+        )),
         Redirect::to("/admin/newsletter"),
-    ))
+    )
+        .into_response();
+
+    let response = save_response(transaction, &idempotency_key, *user_id, response).await?;
+    Ok(response)
 }
 
 struct ConfirmedSubscriber {
