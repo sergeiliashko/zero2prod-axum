@@ -55,6 +55,7 @@ fred = "5.2.0"
 serde_json = "1"
 axum-sessions = "0.5.0"
 console-subscriber = "0.1.8"
+serde_urlencoded = "0.7.1"
 
 
 
@@ -87,3 +88,4 @@ quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 wiremock = "0.5"
 linkify = "0.9"
+serde_urlencoded = "0.7.1"

@@ -8,6 +8,8 @@ use axum::{
 };
 use axum_extra::extract::SignedCookieJar;
 use cookie::Cookie;
+use sqlx::{Postgres, Transaction};
+use uuid::Uuid;
 //use base64::Engine;
 
 use crate::{
@@ -102,44 +104,35 @@ impl IntoResponse for PublishError {
 //}
 
 #[tracing::instrument(
-    name = "Publish a newsletter",
-    skip(pool, email_client, form),
-    //fields( subscriber_email = %form.email, subscriber_name = %form.name),
+    name = "Publish a newsletter issue",
+    skip_all,
+    fields(user_id=%&*user_id),
     err(Debug),
     ret
 )]
 pub async fn publish_newsletter(
     State(pool): State<sqlx::PgPool>,
-    State(email_client): State<EmailClient>,
     Extension(user_id): Extension<UserId>,
     //headers: HeaderMap,
     signed_jar: SignedCookieJar,
     Form(form): Form<BodyData>,
 ) -> Result<Response, PublishError> {
-    //let credentials = basic_authentication(&headers).map_err(PublishError::AuthError)?;
-    //tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
-    //let user_id = validate_credentials(credentials, &pool)
-    //    .await
-    //    .map_err(|e| match e {
-    //        AuthError::InvalidCredentials(_) => PublishError::AuthError(e.into()),
-    //        AuthError::UnexpectedError(_) => PublishError::UnexpectedError(e.into()),
-    //    })?;
-    //tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
     let BodyData {
         title,
         text_content,
         html_content,
         idempotency_key,
     } = form;
+
     let idempotency_key: IdempotencyKey = idempotency_key.try_into()?;
 
-    let transaction = match try_processing(&pool, &idempotency_key, *user_id).await? {
+    let mut transaction = match try_processing(&pool, &idempotency_key, *user_id).await? {
         NextAction::StartProcessing(t) => t,
         NextAction::ReturnSavedResponse(saved_response) => {
             return Ok((
                 signed_jar.add(Cookie::new(
                     "_flash",
-                    "The newsletter issue has been published!",
+                    "The newsletter issue has been accepted - emails will go out shortly.",
                 )),
                 saved_response,
             )
@@ -147,31 +140,39 @@ pub async fn publish_newsletter(
         }
     };
 
-    let subscribers = get_confirmed_subscribers(&pool).await?;
-    for subscriber in subscribers {
-        match subscriber {
-            Ok(subscriber) => {
-                email_client
-                    .send_email(&subscriber.email, &title, &html_content, &text_content)
-                    .await
-                    .with_context(|| {
-                        format!("Failed to send newsletter issue to {}", subscriber.email)
-                    })?;
-            }
-            Err(error) => {
-                tracing::warn!(
-                    error.cause_chain = ?error,
-                    "Skipping a confirmed subscriber. \
-                    Their stored contact details are invalid",
-                );
-            }
-        }
-    }
+    let issue_id = insert_newsletter_issue(&mut transaction, &title, &text_content, &html_content)
+        .await
+        .context("Failed to store newsletter issue details")?;
+
+    enqueue_delivery_tasks(&mut transaction, issue_id)
+        .await
+        .context("Failed to enqueue delivery tasks")?;
+
+    //let subscribers = get_confirmed_subscribers(&pool).await?;
+    //for subscriber in subscribers {
+    //    match subscriber {
+    //        Ok(subscriber) => {
+    //            email_client
+    //                .send_email(&subscriber.email, &title, &html_content, &text_content)
+    //                .await
+    //                .with_context(|| {
+    //                    format!("Failed to send newsletter issue to {}", subscriber.email)
+    //                })?;
+    //        }
+    //        Err(error) => {
+    //            tracing::warn!(
+    //                error.cause_chain = ?error,
+    //                "Skipping a confirmed subscriber. \
+    //                Their stored contact details are invalid",
+    //            );
+    //        }
+    //    }
+    //}
 
     let response = (
         signed_jar.add(Cookie::new(
             "_flash",
-            "The newsletter issue has been published!",
+            "The newsletter issue has been accepted - emails will go out shortly.",
         )),
         Redirect::to("/admin/newsletter"),
     )
@@ -181,29 +182,54 @@ pub async fn publish_newsletter(
     Ok(response)
 }
 
-struct ConfirmedSubscriber {
-    email: SubscriberEmail,
-}
-
-#[tracing::instrument(name = "Get confirmed subscribers", skip(pool))]
-async fn get_confirmed_subscribers(
-    pool: &sqlx::PgPool,
-) -> Result<Vec<Result<ConfirmedSubscriber, anyhow::Error>>, anyhow::Error> {
-    let rows = sqlx::query!(
+#[tracing::instrument(skip_all)]
+async fn insert_newsletter_issue(
+    transaction: &mut Transaction<'_, Postgres>,
+    title: &str,
+    text_content: &str,
+    html_content: &str,
+) -> Result<Uuid, sqlx::Error> {
+    let newsletter_issue_id = Uuid::new_v4();
+    sqlx::query!(
         r#"
-        SELECT email
-        FROM subscriptions
-        WHERE status = 'confirmed' "#,
+        INSERT INTO newsletter_issues (
+            newsletter_issue_id,
+            title,
+            text_content,
+            html_content,
+            published_at
+        )
+        VALUES ($1, $2, $3, $4, now())
+        "#,
+        newsletter_issue_id,
+        title,
+        text_content,
+        html_content
     )
-    .fetch_all(pool)
+    .execute(transaction)
     .await?;
 
-    let confirmed_subscribers = rows
-        .into_iter()
-        .map(|r| match SubscriberEmail::parse(r.email) {
-            Ok(email) => Ok(ConfirmedSubscriber { email }),
-            Err(error) => Err(anyhow::anyhow!(error)),
-        })
-        .collect();
-    Ok(confirmed_subscribers)
+    Ok(newsletter_issue_id)
+}
+
+#[tracing::instrument(skip_all)]
+async fn enqueue_delivery_tasks(
+    transaction: &mut Transaction<'_, Postgres>,
+    newsletter_issue_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        INSERT INTO issue_delivery_queue (
+            newsletter_issue_id,
+            subscriber_email
+        )
+        SELECT $1, email
+        FROM subscriptions
+        WHERE status = 'confirmed'
+        "#,
+        newsletter_issue_id,
+    )
+    .execute(transaction)
+    .await?;
+    Ok(())
 }
