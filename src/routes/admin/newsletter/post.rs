@@ -15,23 +15,9 @@ use uuid::Uuid;
 use crate::{
     //authentication::{Credentials, UserId},
     authentication::UserId,
-    domain::SubscriberEmail,
-    email_client::EmailClient,
     idempotency::{save_response, try_processing, IdempotencyKey, NextAction},
     routes::error_chain_fmt,
 };
-
-//#[derive(serde::Deserialize)]
-//pub struct BodyData {
-//    title: String,
-//    content: Content,
-//}
-
-//#[derive(serde::Deserialize)]
-//pub struct Content {
-//    html: String,
-//    text: String,
-//}
 
 #[derive(serde::Deserialize)]
 pub struct BodyData {
